@@ -320,6 +320,60 @@ body {
 }
 .teaser-emoji { font-size: 1.5rem; }
 
+/* ---------- 부부 비교 모드 ---------- */
+
+.couple-row { display: flex; flex-direction: column; }
+
+/* 배우자 안내 화면 */
+.screen-partner-intro { text-align: center; padding-top: 7vh; gap: 14px; }
+.partner-emoji { font-size: 3.6rem; animation: bounce 2.4s ease-in-out infinite; }
+.partner-notes {
+  list-style: none; text-align: left;
+  background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 10px;
+  font-size: 0.92rem; color: var(--ink-2);
+}
+
+/* 배우자 모드 씬 헤더 */
+.partner-header .link-back { color: var(--accent); font-weight: 700; }
+.partner-header .scene-chapter { color: var(--ink); }
+.partner-header .progress-fill { background: var(--viz-series); }
+
+/* 성향 비교 카드 */
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.compare-card {
+  text-align: center; background: var(--card); border-radius: var(--radius);
+  padding: 20px 12px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.compare-who {
+  font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em;
+  color: var(--accent); background: var(--accent-soft);
+  padding: 3px 10px; border-radius: 999px;
+}
+.compare-emoji { font-size: 2.4rem; line-height: 1.1; }
+.compare-name { font-size: 1rem; font-weight: 800; letter-spacing: -0.01em; }
+
+/* 서로 다른 선택 목록 */
+.diff-note { font-size: 0.85rem; color: var(--ink-2); }
+.diff-empty { font-size: 0.9rem; color: var(--ink-2); }
+.diff-list { list-style: none; display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+.diff-row {
+  display: flex; flex-direction: column; gap: 3px;
+  border-bottom: 1px solid var(--line); padding-bottom: 12px;
+}
+.diff-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.diff-q { font-size: 0.8rem; color: var(--ink-3); }
+.diff-a { font-size: 0.92rem; font-weight: 700; }
+.diff-who {
+  display: inline-block; min-width: 46px;
+  font-size: 0.7rem; font-weight: 800; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 999px;
+  padding: 0 7px; margin-right: 6px; text-align: center; vertical-align: 1px;
+}
+.diff-who.partner { color: var(--viz-series); border-color: var(--viz-series); }
+
 /* ---------- 결과 카드 저장·공유 ---------- */
 
 .share-row { display: flex; flex-direction: column; }
