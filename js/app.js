@@ -18,9 +18,13 @@
     cleared: [],          // 완료한 챕터 id
     current: null,        // { chapterId, sceneIdx }
     revealedGender: null, // '모름' 선택 시 출산 씬에서 공개된 성별
+    couple: null,         // 배우자 퀵런 결과 { choices: {qid:optionId}, done: true }
   });
 
   let state = loadSave() || defaultState();
+
+  // 배우자 퀵런 진행 상태(메모리 전용, 새로고침 시 유실)
+  let partnerRun = null;   // { scenes: [], idx: 0, choices: {} }
 
   function loadSave() {
     try {
@@ -116,7 +120,7 @@
         <div class="home-emoji" aria-hidden="true">👶</div>
         <h1 class="home-title">우리들의<br>육아 이야기</h1>
         <p class="home-sub">임신부터 돌까지, 부모가 되는 여정.<br>
-        중요한 순간마다 당신이 선택하고,<br>다른 부모들의 선택도 확인해 보세요.</p>
+        중요한 순간마다 이상형 월드컵처럼 선택하고,<br>다른 부모들의 선택 통계도 확인해 보세요.</p>
         <div class="home-actions">
           ${hasSave ? `<button class="btn btn-primary" data-act="continue">이어서 하기</button>
                        <button class="btn btn-ghost" data-act="new">처음부터 새로 시작</button>`
@@ -353,30 +357,102 @@
     animateParas();
   }
 
+  /* 이상형 월드컵 방식: 두 카드씩 대결 → 승자가 다음 상대와 대결 → 최종 우승이 선택
+   * 4개: 4강 2경기 + 결승 / 3개: 준결승 + 결승(부전승 1명) / 2개: 단판 VS */
   function showChoiceScene(header, scene) {
-    const picked = state.choices[scene.qid];
-    const opts = scene.options
-      .map((o) => `
-        <button class="option ${picked === o.id ? "picked-before" : ""}" data-opt="${o.id}">
-          <span class="option-label">${esc(tpl(o.label))}</span>
-          ${o.desc ? `<span class="option-desc">${esc(tpl(o.desc))}</span>` : ""}
-        </button>`)
-      .join("");
-    render(`
-      <section class="screen screen-scene">
-        ${header}
-        <div class="story-block"><p class="story-p">${esc(tpl(scene.situation))}</p></div>
-        <div class="ask-card">
-          <h3 class="ask-q">${esc(tpl(scene.question))}</h3>
-          <div class="option-list">${opts}</div>
-        </div>
-      </section>
-    `);
-    on("#back-map", showMap);
-    document.querySelectorAll(".option").forEach((b) =>
-      b.addEventListener("click", () => chooseOption(scene, b.dataset.opt))
-    );
-    animateParas();
+    runWorldCup(scene, {
+      headerHtml: header,
+      showBadge: true,
+      onWin: (optionId) => chooseOption(scene, optionId),
+    });
+  }
+
+  /* 토너먼트 엔진 — 본편과 배우자 모드가 공유한다.
+   * headerHtml : 화면 상단 헤더 마크업
+   * showBadge  : '지난번 우승' 배지 표시 여부
+   * bindHeader : 렌더 직후 헤더 버튼 바인딩(기본: #back-map → 지도)
+   * onWin      : 최종 우승 옵션 id 를 받는 콜백 */
+  function runWorldCup(scene, opts) {
+    const options = opts || {};
+    const headerHtml = options.headerHtml || "";
+    const showBadge = options.showBadge !== false;
+    const onWin = options.onWin;
+    const bindHeader = options.bindHeader || (() => on("#back-map", showMap));
+
+    let queue = shuffle(scene.options.slice());
+    let winners = [];
+    const total = scene.options.length;
+    let roundSize = total;
+
+    const roundLabel = () => {
+      if (total <= 2) return "VS";
+      if (roundSize === 2) return "🏆 결승";
+      if (roundSize === 3) return "준결승";
+      return `${roundSize}강`;
+    };
+
+    const nextMatch = () => {
+      if (queue.length === 1) winners.push(queue.shift());
+      if (queue.length === 0) {
+        if (winners.length === 1) return onWin(winners[0].id);
+        queue = winners;
+        winners = [];
+        roundSize = queue.length;
+      }
+      renderMatch(queue.shift(), queue.shift());
+    };
+
+    const renderMatch = (a, b) => {
+      render(`
+        <section class="screen screen-scene">
+          ${headerHtml}
+          <div class="story-block"><p class="story-p">${esc(tpl(scene.situation))}</p></div>
+          <div class="ask-card">
+            <div class="round-label">${roundLabel()}</div>
+            <h3 class="ask-q">${esc(tpl(scene.question))}</h3>
+            <div class="vs-arena">
+              ${vsCard(scene, a, showBadge)}
+              <div class="vs-badge" aria-hidden="true">VS</div>
+              ${vsCard(scene, b, showBadge)}
+            </div>
+            <p class="vs-hint">더 마음이 가는 쪽을 눌러주세요</p>
+          </div>
+        </section>
+      `);
+      bindHeader();
+      document.querySelectorAll(".vs-card").forEach((el) =>
+        el.addEventListener("click", () => {
+          const winner = el.dataset.opt === a.id ? a : b;
+          el.classList.add("won");
+          setTimeout(() => { winners.push(winner); nextMatch(); }, 260);
+        })
+      );
+      animateParas();
+    };
+
+    nextMatch();
+  }
+
+  function vsCard(scene, o, showBadge) {
+    const before = showBadge !== false && state.choices[scene.qid] === o.id;
+    const art = o.img
+      ? `<img class="vs-img" src="${esc(o.img)}" alt="">`
+      : `<span class="vs-emoji" aria-hidden="true">${o.emoji || "🎈"}</span>`;
+    return `
+      <button class="vs-card" data-opt="${o.id}">
+        <span class="vs-art">${art}</span>
+        <span class="vs-label">${esc(tpl(o.label))}</span>
+        ${o.desc ? `<span class="vs-desc">${esc(tpl(o.desc))}</span>` : ""}
+        ${before ? `<span class="vs-before">지난번 우승</span>` : ""}
+      </button>`;
+  }
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
   }
 
   function chooseOption(scene, optionId) {
@@ -398,7 +474,7 @@
       return `
         <div class="stat-row ${mine ? "mine" : ""}">
           <div class="stat-head">
-            <span class="stat-label">${esc(tpl(o.label))}${mine ? ' <span class="stat-me">나의 선택</span>' : ""}</span>
+            <span class="stat-label">${o.emoji ? o.emoji + " " : ""}${esc(tpl(o.label))}${mine ? ' <span class="stat-me">나의 선택</span>' : ""}</span>
             <span class="stat-pct">${pct}%</span>
           </div>
           <div class="stat-track"><div class="stat-fill" style="--w:${pct}%"></div></div>
@@ -408,8 +484,8 @@
     render(`
       <section class="screen screen-scene">
         <div class="result-card">
-          <div class="result-tag">나의 선택</div>
-          <h3 class="result-choice">${esc(tpl(opt.label))}</h3>
+          <div class="result-tag">🏆 최종 선택</div>
+          <h3 class="result-choice">${opt.emoji ? opt.emoji + " " : ""}${esc(tpl(opt.label))}</h3>
           <p class="result-reaction">${esc(tpl(opt.reaction))}</p>
         </div>
 
@@ -484,12 +560,12 @@
 
   /* ----- 엔딩: 성향 분석 ----- */
 
-  function computeTraits() {
+  function computeTraits(choices = state.choices) {
     const score = { plan: 0, practical: 0, heart: 0, team: 0 };
     for (const ch of STORY.chapters) {
       for (const sc of ch.scenes) {
         if (sc.type !== "choice") continue;
-        const picked = state.choices[sc.qid];
+        const picked = choices[sc.qid];
         if (!picked) continue;
         const opt = sc.options.find((o) => o.id === picked);
         (opt && opt.tags || []).forEach((t) => { score[t] = (score[t] || 0) + 1; });
@@ -498,12 +574,12 @@
     return Object.entries(score).sort((a, b) => b[1] - a[1]);
   }
 
-  function majorityMatch() {
+  function majorityMatch(choices = state.choices) {
     let match = 0, answered = 0;
     for (const ch of STORY.chapters) {
       for (const sc of ch.scenes) {
         if (sc.type !== "choice") continue;
-        const picked = state.choices[sc.qid];
+        const picked = choices[sc.qid];
         if (!picked) continue;
         answered += 1;
         const { counts } = Stats.get(sc.qid);
@@ -521,6 +597,59 @@
     const trait = TRAITS[topKey];
     const { match, answered } = majorityMatch();
     const pct = answered ? Math.round((match / answered) * 100) : 0;
+
+    /* 성향 밸런스 — 태그 총합 대비 백분율 (통계 화면과 같은 바 마크업/규칙) */
+    const traitTotal = ranked.reduce((sum, entry) => sum + entry[1], 0);
+    const balanceCard = !traitTotal ? "" : `
+        <div class="stats-card">
+          <h4 class="stats-title">나의 성향 밸런스</h4>
+          <div class="stats-list">${ranked.map(([key, n], i) => {
+            const t = TRAITS[key];
+            const p = Math.round((n / traitTotal) * 100);
+            return `
+            <div class="stat-row ${i === 0 ? "mine" : ""}">
+              <div class="stat-head">
+                <span class="stat-label">${t.emoji} ${esc(t.name)}</span>
+                <span class="stat-pct">${p}%</span>
+              </div>
+              <div class="stat-track"><div class="stat-fill" style="--w:${p}%"></div></div>
+            </div>`;
+          }).join("")}</div>
+          <p class="stats-total">성향에 우열은 없어요. 우리 가족의 균형을 보는 지도예요.</p>
+        </div>`;
+
+    /* 나만의 소신 선택 — 내 선택의 득표율이 낮은(40% 미만) 상위 3개 */
+    const minority = [];
+    for (const ch of STORY.chapters) {
+      for (const sc of ch.scenes) {
+        if (sc.type !== "choice") continue;
+        const pickedId = state.choices[sc.qid];
+        if (!pickedId) continue;
+        const mine = sc.options.find((o) => o.id === pickedId);
+        if (!mine) continue;
+        const { counts, total } = Stats.get(sc.qid);
+        if (!total) continue;
+        const share = Math.round(((counts[pickedId] || 0) / total) * 100);
+        if (share >= 40) continue;
+        minority.push({ scene: sc, opt: mine, pct: share });
+      }
+    }
+    minority.sort((a, b) => a.pct - b.pct);
+    const minorityTop = minority.slice(0, 3);
+    const minorityCard = !minorityTop.length ? "" : `
+        <div class="review-card">
+          <h3 class="review-title">🌟 나만의 소신 선택</h3>
+          <ul class="minority-list">
+            ${minorityTop.map((m) => `
+            <li class="minority-row">
+              <span class="review-q">${esc(tpl(m.scene.question))}</span>
+              <span class="review-a">내 선택: ${m.opt.emoji ? m.opt.emoji + " " : ""}${esc(tpl(m.opt.label))}
+                <span class="minority-pct">부모 중 ${m.pct}%만 선택</span>
+              </span>
+            </li>`).join("")}
+          </ul>
+          <p class="stats-total">다수와 달라도 괜찮아요. 이 선택들이 우리 가족만의 색깔이에요.</p>
+        </div>`;
 
     const reviewRows = [];
     for (const ch of STORY.chapters) {
@@ -548,12 +677,24 @@
 
     render(`
       <section class="screen screen-ending">
-        <p class="ending-eyebrow">${esc(tpl("{baby|과|와} 함께한 1년, 당신의 육아 성향은"))}</p>
+        <p class="ending-eyebrow">${esc(tpl("{baby|과|와} 함께한 여정, 당신의 육아 성향은"))}</p>
         <div class="trait-card">
           <div class="trait-emoji" aria-hidden="true">${trait.emoji}</div>
           <h2 class="trait-name">${esc(trait.name)}</h2>
           <p class="trait-desc">${esc(trait.desc)}</p>
           ${second ? `<p class="trait-second">서브 성향: ${second.emoji} ${esc(second.name)}</p>` : ""}
+        </div>
+
+        ${balanceCard}
+
+        <div class="share-row">
+          <button class="btn btn-primary" id="share-card">📸 결과 카드 만들기</button>
+        </div>
+
+        <div class="couple-row">
+          ${state.couple?.done
+            ? `<button class="btn btn-primary" id="couple-btn">💞 부부 비교 결과 보기</button>`
+            : `<button class="btn btn-ghost" id="couple-btn">💞 배우자와 선택 비교하기</button>`}
         </div>
 
         <div class="stats-card">
@@ -565,15 +706,18 @@
           <p class="stats-total">일치율이 낮다고 틀린 게 아니에요. 우리 가족만의 답이 정답입니다.</p>
         </div>
 
+        ${minorityCard}
+
         <div class="review-card">
           <h3 class="review-title">나의 선택 돌아보기</h3>
           ${reviewRows.join("")}
         </div>
 
+        ${state.cleared.includes("ch4") ? "" : `
         <div class="teaser-card">
           <span class="teaser-emoji" aria-hidden="true">✨</span>
-          <p><strong>다음 이야기 — 둘째라는 우주</strong><br>“둘째는 언제쯤…?” 그 질문의 이야기가 준비 중입니다.</p>
-        </div>
+          <p>아직 안 끝났어요 — 이야기 지도에서 <strong>둘째라는 우주</strong>를 플레이해 보세요</p>
+        </div>`}
 
         <div class="home-actions">
           <button class="btn btn-primary" id="restart">다른 선택으로 다시 해보기</button>
@@ -582,6 +726,24 @@
       </section>
     `);
     on("#go-map", showMap);
+    on("#couple-btn", () => {
+      if (state.couple?.done) showCoupleCompare();
+      else startPartnerRun();
+    });
+    on("#share-card", () => {
+      if (!window.ShareCard) return;
+      const canvas = ShareCard.render({
+        eyebrow: tpl("{baby|과|와} 함께한 여정"),
+        traitEmoji: trait.emoji,
+        traitName: trait.name,
+        traitDesc: trait.desc,
+        secondLine: second ? `서브 성향: ${second.emoji} ${second.name}` : null,
+        matchPct: pct,
+        matchLine: `${answered}개 질문 중 ${match}개가 다수의 선택과 일치`,
+        appTitle: STORY.title,
+      });
+      showShareOverlay(canvas);
+    });
     on("#restart", () => {
       if (!confirm("이야기를 처음부터 다시 시작할까요? (통계 참여 기록은 유지돼요)")) return;
       state = defaultState();
@@ -591,6 +753,218 @@
     requestAnimationFrame(() =>
       document.querySelectorAll(".stat-fill").forEach((el) => el.classList.add("grow"))
     );
+  }
+
+  /* ----- 부부 비교 모드 ----- */
+
+  // 잠기지 않은 챕터의 choice 씬을 순서대로 모은다
+  function collectChoiceScenes() {
+    const out = [];
+    for (const ch of STORY.chapters) {
+      if (ch.locked) continue;
+      for (const sc of ch.scenes) {
+        if (sc.type === "choice") out.push(sc);
+      }
+    }
+    return out;
+  }
+
+  function startPartnerRun() {
+    const scenes = collectChoiceScenes();
+    partnerRun = { scenes, idx: 0, choices: {} };
+
+    render(`
+      <section class="screen screen-partner-intro">
+        <div class="partner-emoji" aria-hidden="true">💞</div>
+        <h2 class="screen-title">💞 배우자 차례예요</h2>
+        <p class="screen-desc">이제 기기를 배우자에게 건네주세요.</p>
+        <ul class="partner-notes">
+          <li>📖 스토리는 건너뛰고 질문 ${scenes.length}개에 바로 답합니다</li>
+          <li>⏱️ 약 5분이면 끝나요</li>
+          <li>🙈 상대의 답은 미리 보이지 않아요</li>
+        </ul>
+        <div class="home-actions">
+          <button class="btn btn-primary" id="partner-start">시작하기</button>
+          <button class="btn btn-ghost" id="partner-back">돌아가기</button>
+        </div>
+      </section>
+    `);
+    on("#partner-start", showPartnerQuestion);
+    on("#partner-back", () => { partnerRun = null; showEnding(); });
+  }
+
+  function showPartnerQuestion() {
+    if (!partnerRun) return showEnding();
+    if (partnerRun.idx >= partnerRun.scenes.length) return finishPartnerRun();
+
+    const scene = partnerRun.scenes[partnerRun.idx];
+    const total = partnerRun.scenes.length;
+    const n = partnerRun.idx + 1;
+    const progress = Math.round((partnerRun.idx / total) * 100);
+    const header = `
+      <header class="scene-header partner-header">
+        <button class="link-back" id="partner-abort">✕ 중단</button>
+        <div class="scene-chapter">💞 배우자 모드 · ${n}/${total}</div>
+        <div class="progress-track" role="progressbar" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-fill" style="width:${progress}%"></div>
+        </div>
+      </header>`;
+
+    runWorldCup(scene, {
+      headerHtml: header,
+      showBadge: false,                 // 첫 플레이어의 선택이 보이면 안 된다
+      bindHeader: () => on("#partner-abort", abortPartnerRun),
+      onWin: (optionId) => {            // 통계/저장 없이 바로 다음 질문
+        partnerRun.choices[scene.qid] = optionId;
+        partnerRun.idx += 1;
+        showPartnerQuestion();
+      },
+    });
+  }
+
+  function abortPartnerRun() {
+    if (!confirm("배우자 답변을 중단할까요? 지금까지 답한 내용은 저장되지 않아요.")) return;
+    partnerRun = null;
+    showEnding();
+  }
+
+  function finishPartnerRun() {
+    state.couple = { choices: partnerRun.choices, done: true };
+    partnerRun = null;
+    save();
+    showCoupleCompare();
+  }
+
+  function showCoupleCompare() {
+    if (!state.couple?.done) return startPartnerRun();
+
+    const mineTrait = TRAITS[computeTraits(state.choices)[0][0]];
+    const partnerTrait = TRAITS[computeTraits(state.couple.choices)[0][0]];
+
+    let same = 0, both = 0;
+    const diffs = [];
+    for (const ch of STORY.chapters) {
+      for (const sc of ch.scenes) {
+        if (sc.type !== "choice") continue;
+        const mineId = state.choices[sc.qid];
+        const partnerId = state.couple.choices[sc.qid];
+        if (!mineId || !partnerId) continue;
+        both += 1;
+        if (mineId === partnerId) { same += 1; continue; }
+        diffs.push({
+          scene: sc,
+          mine: sc.options.find((o) => o.id === mineId),
+          partner: sc.options.find((o) => o.id === partnerId),
+        });
+      }
+    }
+    const pct = both ? Math.round((same / both) * 100) : 0;
+
+    const optLabel = (o) => (o ? `${o.emoji ? o.emoji + " " : ""}${esc(tpl(o.label))}` : "—");
+    const diffRows = diffs.map((d) => `
+      <li class="diff-row">
+        <span class="diff-q">${esc(tpl(d.scene.question))}</span>
+        <span class="diff-a"><span class="diff-who">나</span> ${optLabel(d.mine)}</span>
+        <span class="diff-a"><span class="diff-who partner">배우자</span> ${optLabel(d.partner)}</span>
+      </li>`).join("");
+
+    render(`
+      <section class="screen screen-ending">
+        <h2 class="screen-title">우리 부부의 선택 비교</h2>
+
+        <div class="compare-grid">
+          <div class="compare-card">
+            <div class="compare-who">나</div>
+            <div class="compare-emoji" aria-hidden="true">${mineTrait.emoji}</div>
+            <div class="compare-name">${esc(mineTrait.name)}</div>
+          </div>
+          <div class="compare-card">
+            <div class="compare-who">배우자</div>
+            <div class="compare-emoji" aria-hidden="true">${partnerTrait.emoji}</div>
+            <div class="compare-name">${esc(partnerTrait.name)}</div>
+          </div>
+        </div>
+
+        <div class="stats-card">
+          <h4 class="stats-title">우리 둘의 선택 일치율</h4>
+          <div class="stat-row mine">
+            <div class="stat-head">
+              <span class="stat-label">${both}개 중 ${same}개 질문에서 같은 선택을 했어요</span>
+              <span class="stat-pct">${pct}%</span>
+            </div>
+            <div class="stat-track"><div class="stat-fill" style="--w:${pct}%"></div></div>
+          </div>
+          <p class="stats-total">일치율이 높다고 좋은 것도, 낮다고 나쁜 것도 아니에요.</p>
+        </div>
+
+        <div class="review-card">
+          <h3 class="review-title">서로 다른 선택 ${diffs.length}개</h3>
+          <p class="diff-note">정답을 가리는 게 아니라, 오늘 밤 대화해 볼 주제예요.</p>
+          ${diffs.length
+            ? `<ul class="diff-list">${diffRows}</ul>`
+            : `<p class="diff-empty">모든 질문에서 같은 선택을 했어요. 놀라운 호흡이네요!</p>`}
+          ${same ? `<p class="stats-total">같은 선택을 한 ${same}개 질문은 목록에서 생략했어요.</p>` : ""}
+        </div>
+
+        <div class="home-actions">
+          <button class="btn btn-ghost" id="couple-redo">배우자 다시 플레이</button>
+          <button class="btn btn-primary" id="couple-to-ending">엔딩으로</button>
+        </div>
+      </section>
+    `);
+
+    on("#couple-redo", () => {
+      if (!confirm("배우자 답변을 지우고 처음부터 다시 할까요?")) return;
+      state.couple = null;
+      save();
+      startPartnerRun();
+    });
+    on("#couple-to-ending", showEnding);
+    requestAnimationFrame(() =>
+      document.querySelectorAll(".stat-fill").forEach((el) => el.classList.add("grow"))
+    );
+  }
+
+  /* ----- 결과 카드 미리보기 오버레이 ----- */
+
+  function showShareOverlay(canvas) {
+    const overlay = document.createElement("div");
+    overlay.className = "share-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-label", "결과 카드 미리보기");
+
+    canvas.setAttribute("aria-label", "나의 육아 성향 결과 카드");
+    overlay.appendChild(canvas);
+
+    const actions = document.createElement("div");
+    actions.className = "share-actions";
+    actions.innerHTML = `
+      <button class="btn btn-primary" data-act="save">이미지 저장</button>
+      ${ShareCard.canWebShare() ? `<button class="btn btn-primary" data-act="share">공유하기</button>` : ""}
+      <button class="btn btn-ghost" data-act="close">닫기</button>`;
+    overlay.appendChild(actions);
+
+    const close = () => {
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+      // 오버레이를 연 버튼으로 포커스 복원 (엔딩 화면이 아니면 조용히 무시)
+      document.getElementById("share-card")?.focus();
+    };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    actions.querySelectorAll("button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const act = b.dataset.act;
+        if (act === "save") ShareCard.download(canvas, "육아성향.png");
+        else if (act === "share") ShareCard.share(canvas);
+        else close();
+      })
+    );
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
+    // 열리면 첫 번째 액션(이미지 저장)으로 포커스를 옮긴다
+    actions.querySelector("[data-act=save]")?.focus();
   }
 
   /* ---------------- 헬퍼 ---------------- */
