@@ -598,6 +598,59 @@
     const { match, answered } = majorityMatch();
     const pct = answered ? Math.round((match / answered) * 100) : 0;
 
+    /* 성향 밸런스 — 태그 총합 대비 백분율 (통계 화면과 같은 바 마크업/규칙) */
+    const traitTotal = ranked.reduce((sum, entry) => sum + entry[1], 0);
+    const balanceCard = !traitTotal ? "" : `
+        <div class="stats-card">
+          <h4 class="stats-title">나의 성향 밸런스</h4>
+          <div class="stats-list">${ranked.map(([key, n], i) => {
+            const t = TRAITS[key];
+            const p = Math.round((n / traitTotal) * 100);
+            return `
+            <div class="stat-row ${i === 0 ? "mine" : ""}">
+              <div class="stat-head">
+                <span class="stat-label">${t.emoji} ${esc(t.name)}</span>
+                <span class="stat-pct">${p}%</span>
+              </div>
+              <div class="stat-track"><div class="stat-fill" style="--w:${p}%"></div></div>
+            </div>`;
+          }).join("")}</div>
+          <p class="stats-total">성향에 우열은 없어요. 우리 가족의 균형을 보는 지도예요.</p>
+        </div>`;
+
+    /* 나만의 소신 선택 — 내 선택의 득표율이 낮은(40% 미만) 상위 3개 */
+    const minority = [];
+    for (const ch of STORY.chapters) {
+      for (const sc of ch.scenes) {
+        if (sc.type !== "choice") continue;
+        const pickedId = state.choices[sc.qid];
+        if (!pickedId) continue;
+        const mine = sc.options.find((o) => o.id === pickedId);
+        if (!mine) continue;
+        const { counts, total } = Stats.get(sc.qid);
+        if (!total) continue;
+        const share = Math.round(((counts[pickedId] || 0) / total) * 100);
+        if (share >= 40) continue;
+        minority.push({ scene: sc, opt: mine, pct: share });
+      }
+    }
+    minority.sort((a, b) => a.pct - b.pct);
+    const minorityTop = minority.slice(0, 3);
+    const minorityCard = !minorityTop.length ? "" : `
+        <div class="review-card">
+          <h3 class="review-title">🌟 나만의 소신 선택</h3>
+          <ul class="minority-list">
+            ${minorityTop.map((m) => `
+            <li class="minority-row">
+              <span class="review-q">${esc(tpl(m.scene.question))}</span>
+              <span class="review-a">내 선택: ${m.opt.emoji ? m.opt.emoji + " " : ""}${esc(tpl(m.opt.label))}
+                <span class="minority-pct">부모 중 ${m.pct}%만 선택</span>
+              </span>
+            </li>`).join("")}
+          </ul>
+          <p class="stats-total">다수와 달라도 괜찮아요. 이 선택들이 우리 가족만의 색깔이에요.</p>
+        </div>`;
+
     const reviewRows = [];
     for (const ch of STORY.chapters) {
       const rows = ch.scenes
@@ -632,6 +685,8 @@
           ${second ? `<p class="trait-second">서브 성향: ${second.emoji} ${esc(second.name)}</p>` : ""}
         </div>
 
+        ${balanceCard}
+
         <div class="share-row">
           <button class="btn btn-primary" id="share-card">📸 결과 카드 만들기</button>
         </div>
@@ -650,6 +705,8 @@
           </div>
           <p class="stats-total">일치율이 낮다고 틀린 게 아니에요. 우리 가족만의 답이 정답입니다.</p>
         </div>
+
+        ${minorityCard}
 
         <div class="review-card">
           <h3 class="review-title">나의 선택 돌아보기</h3>

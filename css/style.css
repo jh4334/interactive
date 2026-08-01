@@ -313,6 +313,15 @@ body {
 .review-cmp { display: block; font-size: 0.78rem; font-weight: 600; color: var(--ink-3); }
 .review-cmp.same { color: var(--viz-series); }
 
+/* 나만의 소신 선택 */
+.minority-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.minority-row {
+  display: flex; flex-direction: column; gap: 2px;
+  border-bottom: 1px solid var(--line); padding-bottom: 10px;
+}
+.minority-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.minority-pct { display: block; font-size: 0.78rem; font-weight: 700; color: var(--viz-series); }
+
 .teaser-card {
   display: flex; gap: 12px; align-items: center;
   background: var(--card-soft); border: 1.5px dashed var(--line); border-radius: var(--radius);
