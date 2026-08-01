@@ -601,7 +601,7 @@
 
     render(`
       <section class="screen screen-ending">
-        <p class="ending-eyebrow">${esc(tpl("{baby|과|와} 함께한 1년, 당신의 육아 성향은"))}</p>
+        <p class="ending-eyebrow">${esc(tpl("{baby|과|와} 함께한 여정, 당신의 육아 성향은"))}</p>
         <div class="trait-card">
           <div class="trait-emoji" aria-hidden="true">${trait.emoji}</div>
           <h2 class="trait-name">${esc(trait.name)}</h2>
@@ -623,10 +623,11 @@
           ${reviewRows.join("")}
         </div>
 
+        ${state.cleared.includes("ch4") ? "" : `
         <div class="teaser-card">
           <span class="teaser-emoji" aria-hidden="true">✨</span>
-          <p><strong>다음 이야기 — 둘째라는 우주</strong><br>“둘째는 언제쯤…?” 그 질문의 이야기가 준비 중입니다.</p>
-        </div>
+          <p>아직 안 끝났어요 — 이야기 지도에서 <strong>둘째라는 우주</strong>를 플레이해 보세요</p>
+        </div>`}
 
         <div class="home-actions">
           <button class="btn btn-primary" id="restart">다른 선택으로 다시 해보기</button>
