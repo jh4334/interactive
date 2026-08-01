@@ -609,6 +609,10 @@
           ${second ? `<p class="trait-second">서브 성향: ${second.emoji} ${esc(second.name)}</p>` : ""}
         </div>
 
+        <div class="share-row">
+          <button class="btn btn-primary" id="share-card">📸 결과 카드 만들기</button>
+        </div>
+
         <div class="stats-card">
           <h4 class="stats-title">다른 부모들과의 선택 일치도</h4>
           <div class="stat-row mine">
@@ -636,6 +640,20 @@
       </section>
     `);
     on("#go-map", showMap);
+    on("#share-card", () => {
+      if (!window.ShareCard) return;
+      const canvas = ShareCard.render({
+        eyebrow: tpl("{baby|과|와} 함께한 여정"),
+        traitEmoji: trait.emoji,
+        traitName: trait.name,
+        traitDesc: trait.desc,
+        secondLine: second ? `서브 성향: ${second.emoji} ${second.name}` : null,
+        matchPct: pct,
+        matchLine: `${answered}개 질문 중 ${match}개가 다수의 선택과 일치`,
+        appTitle: STORY.title,
+      });
+      showShareOverlay(canvas);
+    });
     on("#restart", () => {
       if (!confirm("이야기를 처음부터 다시 시작할까요? (통계 참여 기록은 유지돼요)")) return;
       state = defaultState();
@@ -645,6 +663,44 @@
     requestAnimationFrame(() =>
       document.querySelectorAll(".stat-fill").forEach((el) => el.classList.add("grow"))
     );
+  }
+
+  /* ----- 결과 카드 미리보기 오버레이 ----- */
+
+  function showShareOverlay(canvas) {
+    const overlay = document.createElement("div");
+    overlay.className = "share-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-label", "결과 카드 미리보기");
+
+    canvas.setAttribute("aria-label", "나의 육아 성향 결과 카드");
+    overlay.appendChild(canvas);
+
+    const actions = document.createElement("div");
+    actions.className = "share-actions";
+    actions.innerHTML = `
+      <button class="btn btn-primary" data-act="save">이미지 저장</button>
+      ${ShareCard.canWebShare() ? `<button class="btn btn-primary" data-act="share">공유하기</button>` : ""}
+      <button class="btn btn-ghost" data-act="close">닫기</button>`;
+    overlay.appendChild(actions);
+
+    const close = () => {
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+    };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    actions.querySelectorAll("button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const act = b.dataset.act;
+        if (act === "save") ShareCard.download(canvas, "육아성향.png");
+        else if (act === "share") ShareCard.share(canvas);
+        else close();
+      })
+    );
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
   }
 
   /* ---------------- 헬퍼 ---------------- */
