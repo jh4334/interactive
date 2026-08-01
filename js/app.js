@@ -947,6 +947,8 @@
     const close = () => {
       document.removeEventListener("keydown", onKey);
       overlay.remove();
+      // 오버레이를 연 버튼으로 포커스 복원 (엔딩 화면이 아니면 조용히 무시)
+      document.getElementById("share-card")?.focus();
     };
     const onKey = (e) => { if (e.key === "Escape") close(); };
 
@@ -961,6 +963,8 @@
     );
     document.addEventListener("keydown", onKey);
     document.body.appendChild(overlay);
+    // 열리면 첫 번째 액션(이미지 저장)으로 포커스를 옮긴다
+    actions.querySelector("[data-act=save]")?.focus();
   }
 
   /* ---------------- 헬퍼 ---------------- */
