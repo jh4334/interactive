@@ -116,7 +116,7 @@
         <div class="home-emoji" aria-hidden="true">👶</div>
         <h1 class="home-title">우리들의<br>육아 이야기</h1>
         <p class="home-sub">임신부터 돌까지, 부모가 되는 여정.<br>
-        중요한 순간마다 당신이 선택하고,<br>다른 부모들의 선택도 확인해 보세요.</p>
+        중요한 순간마다 이상형 월드컵처럼 선택하고,<br>다른 부모들의 선택 통계도 확인해 보세요.</p>
         <div class="home-actions">
           ${hasSave ? `<button class="btn btn-primary" data-act="continue">이어서 하기</button>
                        <button class="btn btn-ghost" data-act="new">처음부터 새로 시작</button>`
@@ -353,30 +353,83 @@
     animateParas();
   }
 
+  /* 이상형 월드컵 방식: 두 카드씩 대결 → 승자가 다음 상대와 대결 → 최종 우승이 선택
+   * 4개: 4강 2경기 + 결승 / 3개: 준결승 + 결승(부전승 1명) / 2개: 단판 VS */
   function showChoiceScene(header, scene) {
-    const picked = state.choices[scene.qid];
-    const opts = scene.options
-      .map((o) => `
-        <button class="option ${picked === o.id ? "picked-before" : ""}" data-opt="${o.id}">
-          <span class="option-label">${esc(tpl(o.label))}</span>
-          ${o.desc ? `<span class="option-desc">${esc(tpl(o.desc))}</span>` : ""}
-        </button>`)
-      .join("");
-    render(`
-      <section class="screen screen-scene">
-        ${header}
-        <div class="story-block"><p class="story-p">${esc(tpl(scene.situation))}</p></div>
-        <div class="ask-card">
-          <h3 class="ask-q">${esc(tpl(scene.question))}</h3>
-          <div class="option-list">${opts}</div>
-        </div>
-      </section>
-    `);
-    on("#back-map", showMap);
-    document.querySelectorAll(".option").forEach((b) =>
-      b.addEventListener("click", () => chooseOption(scene, b.dataset.opt))
-    );
-    animateParas();
+    let queue = shuffle(scene.options.slice());
+    let winners = [];
+    const total = scene.options.length;
+    let roundSize = total;
+
+    const roundLabel = () => {
+      if (total <= 2) return "VS";
+      if (roundSize === 2) return "🏆 결승";
+      if (roundSize === 3) return "준결승";
+      return `${roundSize}강`;
+    };
+
+    const nextMatch = () => {
+      if (queue.length === 1) winners.push(queue.shift());
+      if (queue.length === 0) {
+        if (winners.length === 1) return chooseOption(scene, winners[0].id);
+        queue = winners;
+        winners = [];
+        roundSize = queue.length;
+      }
+      renderMatch(queue.shift(), queue.shift());
+    };
+
+    const renderMatch = (a, b) => {
+      render(`
+        <section class="screen screen-scene">
+          ${header}
+          <div class="story-block"><p class="story-p">${esc(tpl(scene.situation))}</p></div>
+          <div class="ask-card">
+            <div class="round-label">${roundLabel()}</div>
+            <h3 class="ask-q">${esc(tpl(scene.question))}</h3>
+            <div class="vs-arena">
+              ${vsCard(scene, a)}
+              <div class="vs-badge" aria-hidden="true">VS</div>
+              ${vsCard(scene, b)}
+            </div>
+            <p class="vs-hint">더 마음이 가는 쪽을 눌러주세요</p>
+          </div>
+        </section>
+      `);
+      on("#back-map", showMap);
+      document.querySelectorAll(".vs-card").forEach((el) =>
+        el.addEventListener("click", () => {
+          const winner = el.dataset.opt === a.id ? a : b;
+          el.classList.add("won");
+          setTimeout(() => { winners.push(winner); nextMatch(); }, 260);
+        })
+      );
+      animateParas();
+    };
+
+    nextMatch();
+  }
+
+  function vsCard(scene, o) {
+    const before = state.choices[scene.qid] === o.id;
+    const art = o.img
+      ? `<img class="vs-img" src="${esc(o.img)}" alt="">`
+      : `<span class="vs-emoji" aria-hidden="true">${o.emoji || "🎈"}</span>`;
+    return `
+      <button class="vs-card" data-opt="${o.id}">
+        <span class="vs-art">${art}</span>
+        <span class="vs-label">${esc(tpl(o.label))}</span>
+        ${o.desc ? `<span class="vs-desc">${esc(tpl(o.desc))}</span>` : ""}
+        ${before ? `<span class="vs-before">지난번 우승</span>` : ""}
+      </button>`;
+  }
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
   }
 
   function chooseOption(scene, optionId) {
@@ -398,7 +451,7 @@
       return `
         <div class="stat-row ${mine ? "mine" : ""}">
           <div class="stat-head">
-            <span class="stat-label">${esc(tpl(o.label))}${mine ? ' <span class="stat-me">나의 선택</span>' : ""}</span>
+            <span class="stat-label">${o.emoji ? o.emoji + " " : ""}${esc(tpl(o.label))}${mine ? ' <span class="stat-me">나의 선택</span>' : ""}</span>
             <span class="stat-pct">${pct}%</span>
           </div>
           <div class="stat-track"><div class="stat-fill" style="--w:${pct}%"></div></div>
@@ -408,8 +461,8 @@
     render(`
       <section class="screen screen-scene">
         <div class="result-card">
-          <div class="result-tag">나의 선택</div>
-          <h3 class="result-choice">${esc(tpl(opt.label))}</h3>
+          <div class="result-tag">🏆 최종 선택</div>
+          <h3 class="result-choice">${opt.emoji ? opt.emoji + " " : ""}${esc(tpl(opt.label))}</h3>
           <p class="result-reaction">${esc(tpl(opt.reaction))}</p>
         </div>
 
